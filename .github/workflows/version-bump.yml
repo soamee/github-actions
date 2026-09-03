@@ -1,0 +1,91 @@
+name: "Version Bump"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version bump type (patch, minor, major)"
+        type: string
+        required: true
+      base-branch:
+        description: "Branch to target the release PR against"
+        type: string
+        default: "main"
+      reviewers:
+        description: "Space-separated GitHub usernames to request review from"
+        type: string
+        default: "javiermanzano juangutierrezortega Bermejo3 AndreaAguado Daviddpc92"
+      node-version:
+        description: "Node.js version"
+        type: string
+        default: "22"
+      package-files:
+        description: "Space-separated files to stage after bump (e.g. 'package.json package-lock.json')"
+        type: string
+        default: "package.json"
+    secrets:
+      DEPENDENCY_UPDATE_TOKEN:
+        required: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          NEW_VERSION=$(npm version ${{ inputs.version }} --no-git-tag-version)
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create release branch and PR
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+          REVIEWERS: ${{ inputs.reviewers }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="release/${{ steps.bump.outputs.version }}"
+
+          # Delete stale remote branch if it exists
+          git push origin --delete "$BRANCH" 2>/dev/null || true
+
+          git checkout -b "$BRANCH"
+          git add ${{ inputs.package-files }}
+          git commit -m "chore(release): ${{ steps.bump.outputs.version }}"
+          git push origin "$BRANCH"
+
+          # Close any existing PR for this branch
+          old_url=$(gh pr list --base "${{ inputs.base-branch }}" --head "$BRANCH" --state open --json url --jq '.[0].url // ""')
+          if [ -n "$old_url" ]; then
+            gh pr close "$old_url" --delete-branch 2>/dev/null || true
+          fi
+
+          url=$(gh pr create \
+            --base "${{ inputs.base-branch }}" \
+            --head "$BRANCH" \
+            --title "chore(release): ${{ steps.bump.outputs.version }}" \
+            --body "Automated version bump to ${{ steps.bump.outputs.version }} (${{ inputs.version }})")
+
+          # Assign reviewers (gracefully skip failures)
+          for reviewer in $REVIEWERS; do
+            gh pr edit "$url" --add-reviewer "$reviewer" >/dev/null 2>&1 || true
+          done
+
+          echo "Release PR: $url" >> "$GITHUB_STEP_SUMMARY"
