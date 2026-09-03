@@ -1,0 +1,31 @@
+name: "Lint Auto-fix and Commit"
+description: "Runs linter with --fix, commits and pushes changes if any"
+
+inputs:
+  lint-command:
+    description: "Lint command to run (e.g. 'yarn lint --fix')"
+    required: false
+    default: "yarn lint --fix"
+  commit-message:
+    description: "Commit message for lint fixes"
+    required: false
+    default: "style: auto-fix lint issues"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run linter with auto-fix
+      shell: bash
+      run: ${{ inputs.lint-command }}
+
+    - name: Commit and push lint fixes
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        if ! git diff --quiet; then
+          git add --all
+          git commit -m "${{ inputs.commit-message }}"
+          git push
+        fi

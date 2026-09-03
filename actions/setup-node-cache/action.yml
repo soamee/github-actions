@@ -1,0 +1,37 @@
+name: "Setup Node.js with Yarn Cache"
+description: "Sets up Node.js and caches node_modules via yarn.lock hash"
+
+inputs:
+  node-version:
+    description: "Node.js version to install"
+    required: false
+    default: ""
+  node-version-file:
+    description: "File containing the Node.js version (.nvmrc)"
+    required: false
+    default: ""
+  cache-paths:
+    description: "Newline-separated list of paths to cache (defaults to node_modules)"
+    required: false
+    default: "node_modules"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version || '' }}
+        node-version-file: ${{ inputs.node-version-file || '' }}
+        cache: yarn
+
+    - name: Restore node_modules cache
+      uses: actions/cache@v6
+      id: cache
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
+
+    - name: Install dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: yarn install --frozen-lockfile --non-interactive

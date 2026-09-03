@@ -1,0 +1,309 @@
+name: "Update Soamee Packages"
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: "Base branch to target (e.g. develop, main)"
+        type: string
+        default: "develop"
+      node-version:
+        description: "Node.js version"
+        type: string
+        required: true
+      reviewers:
+        description: "Space-separated list of GitHub usernames to request review from"
+        type: string
+        default: "javiermanzano juangutierrezortega Bermejo3 AndreaAguado Daviddpc92"
+    secrets:
+      DEPENDENCY_UPDATE_TOKEN:
+        required: false
+
+concurrency:
+  group: update-soamee-packages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      BASE_BRANCH: ${{ inputs.base-branch }}
+      UPDATE_BRANCH: chore/update-soamee-packages
+      REVIEWERS: ${{ inputs.reviewers }}
+      HAS_UPDATE_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN != '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base-branch }}
+          fetch-depth: 0
+          token: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: yarn
+
+      - name: Look for newer @soamee/* releases
+        id: check
+        run: |
+          cat > /tmp/update-soamee-packages.mjs << 'SCRIPT_EOF'
+          import {
+            appendFileSync,
+            readdirSync,
+            readFileSync,
+            writeFileSync,
+          } from 'node:fs';
+          import { join, relative } from 'node:path';
+
+          const SCOPE = '@soamee/';
+          const REGISTRY = process.env.NPM_REGISTRY ?? 'https://registry.npmjs.org';
+          const DEPENDENCY_SECTIONS = [
+            'dependencies',
+            'devDependencies',
+            'peerDependencies',
+            'optionalDependencies',
+          ];
+          const SKIPPED_DIRECTORIES = new Set([
+            'node_modules',
+            'dist',
+            'build',
+            'coverage',
+            'storybook-static',
+            '.next',
+            '.git',
+          ]);
+          const SUPPORTED_RANGE = /^(\^|~|>=|)(\d+)\.(\d+)\.(\d+)$/;
+
+          const repositoryRoot = process.cwd();
+
+          function findManifests(directory) {
+            const manifests = [];
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const entryPath = join(directory, entry.name);
+              if (entry.isDirectory()) {
+                if (SKIPPED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.'))
+                  continue;
+                manifests.push(...findManifests(entryPath));
+                continue;
+              }
+              if (entry.name === 'package.json') manifests.push(entryPath);
+            }
+            return manifests;
+          }
+
+          function collectDeclarations(manifestPath) {
+            const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+            return DEPENDENCY_SECTIONS.flatMap((section) =>
+              Object.entries(manifest[section] ?? {})
+                .filter(([name]) => name.startsWith(SCOPE))
+                .map(([name, range]) => ({ manifestPath, section, name, range })),
+            );
+          }
+
+          async function fetchLatestVersion(name) {
+            const response = await fetch(`${REGISTRY}/${encodeURIComponent(name)}`, {
+              headers: { accept: 'application/vnd.npm.install-v1+json' },
+            });
+            if (!response.ok) {
+              throw new Error(
+                `Registry request for ${name} failed with status ${response.status}`,
+              );
+            }
+            const latest = (await response.json())['dist-tags']?.latest;
+            if (!latest)
+              throw new Error(`The registry did not report a latest version for ${name}`);
+            return latest;
+          }
+
+          function isNewer({ candidate, current }) {
+            const candidateParts = candidate.split('.').map(Number);
+            const currentParts = current.split('.').map(Number);
+            for (let index = 0; index < 3; index += 1) {
+              if (candidateParts[index] !== currentParts[index])
+                return candidateParts[index] > currentParts[index];
+            }
+            return false;
+          }
+
+          function applyUpdate({ manifestPath, name, range, nextRange }) {
+            const contents = readFileSync(manifestPath, 'utf8');
+            const declaration = new RegExp(
+              `("${name.replace('/', '\\/')}"\\s*:\\s*)"${range.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`,
+            );
+            if (!declaration.test(contents)) {
+              throw new Error(
+                `Could not locate the ${name} declaration in ${manifestPath}`,
+              );
+            }
+            writeFileSync(
+              manifestPath,
+              contents.replace(declaration, `$1"${nextRange}"`),
+            );
+          }
+
+          function publishOutputs({ updates, summary }) {
+            if (!process.env.GITHUB_OUTPUT) return;
+            const delimiter = 'SOAMEE_SUMMARY_EOF';
+            appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              `updated=${updates.length > 0}\nsummary<<${delimiter}\n${summary}\n${delimiter}\n`,
+            );
+          }
+
+          function buildSummary(updates) {
+            const rows = updates.map(
+              ({ name, manifestPath, current, latest }) =>
+                `| \`${name}\` | \`${relative(repositoryRoot, manifestPath) || 'package.json'}\` | ${current} | ${latest} |`,
+            );
+            return [
+              '| Package | Manifest | From | To |',
+              '| --- | --- | --- | --- |',
+              ...rows,
+            ].join('\n');
+          }
+
+          const declarations = findManifests(repositoryRoot).flatMap(collectDeclarations);
+
+          if (declarations.length === 0) {
+            console.log('No @soamee/* dependencies are declared in this repository.');
+            publishOutputs({ updates: [], summary: '' });
+            process.exit(0);
+          }
+
+          const latestVersions = new Map(
+            await Promise.all(
+              [...new Set(declarations.map(({ name }) => name))].map(async (name) => [
+                name,
+                await fetchLatestVersion(name),
+              ]),
+            ),
+          );
+
+          const updates = [];
+
+          for (const declaration of declarations) {
+            const { manifestPath, name, range } = declaration;
+            const location = relative(repositoryRoot, manifestPath) || 'package.json';
+            const parsedRange = SUPPORTED_RANGE.exec(range);
+
+            if (!parsedRange) {
+              console.log(
+                `- ${name} (${location}): skipped, "${range}" is not a plain version range`,
+              );
+              continue;
+            }
+
+            const [, prefix, major, minor, patch] = parsedRange;
+            const current = `${major}.${minor}.${patch}`;
+            const latest = latestVersions.get(name);
+
+            if (!isNewer({ candidate: latest, current })) {
+              console.log(`- ${name} (${location}): up to date on ${current}`);
+              continue;
+            }
+
+            console.log(`- ${name} (${location}): ${current} -> ${latest}`);
+            updates.push({
+              ...declaration,
+              current,
+              latest,
+              nextRange: `${prefix}${latest}`,
+            });
+          }
+
+          if (updates.length === 0) {
+            console.log(
+              'Every @soamee/* dependency is already on its latest published version.',
+            );
+            publishOutputs({ updates, summary: '' });
+            process.exit(0);
+          }
+
+          updates.forEach(applyUpdate);
+          console.log(
+            `Updated ${updates.length} dependency declaration(s). Run an install to refresh the lockfile.`,
+          );
+
+          publishOutputs({ updates, summary: buildSummary(updates) });
+          SCRIPT_EOF
+          node /tmp/update-soamee-packages.mjs
+
+      - name: Refresh the lockfile
+        if: steps.check.outputs.updated == 'true'
+        run: yarn install --ignore-scripts --non-interactive
+
+      - name: Open or update the pull request
+        if: steps.check.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+          SUMMARY: ${{ steps.check.outputs.summary }}
+        run: |
+          set -euo pipefail
+
+          request_reviews() {
+            local pull_request="$1"
+            local candidate requested="" rejected=""
+
+            for candidate in $REVIEWERS; do
+              if gh pr edit "$pull_request" --add-reviewer "$candidate" >/dev/null 2>&1; then
+                requested="$requested $candidate"
+              else
+                rejected="$rejected $candidate"
+              fi
+            done
+
+            echo "Review requested from:${requested:- nobody}" >> "$GITHUB_STEP_SUMMARY"
+
+            if [ -n "$rejected" ]; then
+              echo "Review could not be requested from:$rejected" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "$UPDATE_BRANCH"
+          git add --all
+
+          if git diff --cached --quiet; then
+            echo "The update branch already matches $BASE_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if git rev-parse --verify --quiet "origin/$UPDATE_BRANCH" >/dev/null &&
+            [ "$(git write-tree)" = "$(git rev-parse "origin/$UPDATE_BRANCH^{tree}")" ]; then
+            echo "The open pull request already contains these updates." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git commit -m "chore(deps): update @soamee packages"
+          git push --force-with-lease -u origin "$UPDATE_BRANCH"
+
+          body=$(printf '%s\n\nOpened automatically by the `Update Soamee Packages` workflow. Merge once CI is green.\n' "$SUMMARY")
+
+          url=$(gh pr list --base "$BASE_BRANCH" --head "$UPDATE_BRANCH" --state open --json url --jq '.[0].url // ""')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --base "$BASE_BRANCH" --head "$UPDATE_BRANCH" \
+              --title "chore(deps): update @soamee packages" \
+              --body "$body")
+
+            request_reviews "$url"
+          else
+            gh pr edit "$url" --body "$body"
+          fi
+
+          {
+            echo "$SUMMARY"
+            echo ""
+            echo "Pull request: $url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HAS_UPDATE_TOKEN" != "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure the DEPENDENCY_UPDATE_TOKEN secret so the pull request also triggers CI." >> "$GITHUB_STEP_SUMMARY"
+          fi

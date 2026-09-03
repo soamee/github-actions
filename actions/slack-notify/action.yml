@@ -1,0 +1,47 @@
+name: "Slack Notification"
+description: "Sends a Slack notification for job success, cancellation, or failure"
+
+inputs:
+  status:
+    description: "Job status — use ${{ job.status }}"
+    required: true
+  webhook-url:
+    description: "Slack webhook URL"
+    required: true
+  title-prefix:
+    description: "Prefix for the notification title (e.g. repo name)"
+    required: false
+    default: "${{ github.repository }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Notify success
+      if: inputs.status == 'success'
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ inputs.webhook-url }}
+        SLACK_COLOR: good
+        SLACK_TITLE: "${{ inputs.title-prefix }} — Build passed"
+        SLACK_MESSAGE: "Branch: ${{ github.ref_name }} | Commit: ${{ github.sha }}"
+        SLACK_FOOTER: ""
+
+    - name: Notify cancellation
+      if: inputs.status == 'cancelled'
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ inputs.webhook-url }}
+        SLACK_COLOR: warning
+        SLACK_TITLE: "${{ inputs.title-prefix }} — Build cancelled"
+        SLACK_MESSAGE: "Branch: ${{ github.ref_name }} | Commit: ${{ github.sha }}"
+        SLACK_FOOTER: ""
+
+    - name: Notify failure
+      if: inputs.status == 'failure'
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ inputs.webhook-url }}
+        SLACK_COLOR: danger
+        SLACK_TITLE: "${{ inputs.title-prefix }} — Build failed"
+        SLACK_MESSAGE: "Branch: ${{ github.ref_name }} | Commit: ${{ github.sha }}"
+        SLACK_FOOTER: ""
