@@ -3,15 +3,15 @@ description: "Sends a Slack notification for job success, cancellation, or failu
 
 inputs:
   status:
-    description: "Job status — use ${{ job.status }}"
+    description: "Job status — pass ${{ job.status }} from the caller"
     required: true
   webhook-url:
     description: "Slack webhook URL"
     required: true
   title-prefix:
-    description: "Prefix for the notification title (e.g. repo name)"
+    description: "Prefix for the notification title"
     required: false
-    default: "${{ github.repository }}"
+    default: "Build"
 
 runs:
   using: "composite"
