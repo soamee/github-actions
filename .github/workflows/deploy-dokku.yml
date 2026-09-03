@@ -1,0 +1,106 @@
+name: "Deploy to Dokku"
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Deployment environment (pre/pro)"
+        type: string
+        required: true
+      dokku-app-names:
+        description: "Space-separated Dokku app secret names (e.g. 'DOKKU_WEB_SSH DOKKU_DASHBOARD_SSH')"
+        type: string
+        required: true
+      node-version:
+        description: "Node.js version"
+        type: string
+        default: ""
+      node-version-file:
+        description: "File with Node.js version (.nvmrc)"
+        type: string
+        default: ""
+      run-migrations:
+        description: "Run Prisma migrations before deploy"
+        type: boolean
+        default: false
+      commit-sha:
+        description: "Commit SHA to deploy (defaults to current)"
+        type: string
+        default: ""
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      DATABASE_URL:
+        required: false
+      SLACK_WEBHOOK:
+        required: false
+      DOKKU_WEB_SSH:
+        required: false
+      DOKKU_DASHBOARD_SSH:
+        required: false
+      DOKKU_API_SSH:
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      DEPLOY_SHA: ${{ inputs.commit-sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        if: inputs.run-migrations
+        with:
+          node-version: ${{ inputs.node-version || '' }}
+          node-version-file: ${{ inputs.node-version-file || '' }}
+          cache: yarn
+
+      - name: Install dependencies
+        if: inputs.run-migrations
+        run: yarn install --frozen-lockfile
+
+      - name: Run database migrations
+        if: inputs.run-migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: yarn prisma migrate deploy
+
+      - name: Deploy to Dokku (API)
+        if: contains(inputs.dokku-app-names, 'DOKKU_API_SSH') && secrets.DOKKU_API_SSH != ''
+        uses: dokku/github-action@master
+        with:
+          ci_commit: ${{ env.DEPLOY_SHA }}
+          git_push_flags: "--force"
+          git_remote_url: ${{ secrets.DOKKU_API_SSH }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to Dokku (Web)
+        if: contains(inputs.dokku-app-names, 'DOKKU_WEB_SSH') && secrets.DOKKU_WEB_SSH != ''
+        uses: dokku/github-action@master
+        with:
+          ci_commit: ${{ env.DEPLOY_SHA }}
+          git_push_flags: "--force"
+          git_remote_url: ${{ secrets.DOKKU_WEB_SSH }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to Dokku (Dashboard)
+        if: contains(inputs.dokku-app-names, 'DOKKU_DASHBOARD_SSH') && secrets.DOKKU_DASHBOARD_SSH != ''
+        uses: dokku/github-action@master
+        with:
+          ci_commit: ${{ env.DEPLOY_SHA }}
+          git_push_flags: "--force"
+          git_remote_url: ${{ secrets.DOKKU_DASHBOARD_SSH }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - uses: soamee/github-actions/actions/slack-notify@main
+        if: always() && env.SLACK_WEBHOOK != ''
+        with:
+          status: ${{ job.status }}
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          title-prefix: "${{ github.repository }} (${{ inputs.environment }})"

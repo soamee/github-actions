@@ -1,0 +1,71 @@
+name: "Promote Branch"
+
+on:
+  workflow_call:
+    inputs:
+      source-branch:
+        description: "Source branch"
+        type: string
+        default: "develop"
+      target-branch:
+        description: "Target branch"
+        type: string
+        default: "main"
+      mode:
+        description: "Promotion mode: 'merge' (direct) or 'pr' (creates a PR for review)"
+        type: string
+        default: "merge"
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate branches exist
+        run: |
+          set -euo pipefail
+          for branch in "${{ inputs.source-branch }}" "${{ inputs.target-branch }}"; do
+            if ! git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+              echo "::error::Branch '$branch' does not exist in origin."
+              exit 1
+            fi
+          done
+
+      - name: Check for new commits
+        id: check
+        run: |
+          count=$(git rev-list --count "origin/${{ inputs.target-branch }}..origin/${{ inputs.source-branch }}")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "Nothing to promote: ${{ inputs.target-branch }} already contains ${{ inputs.source-branch }}." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Direct merge
+        if: steps.check.outputs.count != '0' && inputs.mode == 'merge'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${{ inputs.target-branch }}" "origin/${{ inputs.target-branch }}"
+          git merge --no-ff --no-edit "origin/${{ inputs.source-branch }}"
+          git push origin "${{ inputs.target-branch }}"
+          echo "Promotion completed: ${{ inputs.source-branch }} -> ${{ inputs.target-branch }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create promotion PR
+        if: steps.check.outputs.count != '0' && inputs.mode == 'pr'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url=$(gh pr list --base "${{ inputs.target-branch }}" --head "${{ inputs.source-branch }}" --state open --json url --jq '.[0].url // ""')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --base "${{ inputs.target-branch }}" --head "${{ inputs.source-branch }}" \
+              --title "Promote ${{ inputs.source-branch }} to ${{ inputs.target-branch }}" \
+              --body "Merging this PR deploys to production.")
+          fi
+          echo "Promotion PR: $url (${{ steps.check.outputs.count }} commits)" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,212 @@
+name: "Build, Test and Lint (NestJS)"
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version"
+        type: string
+        required: true
+      postgres-user:
+        description: "Postgres user for tests"
+        type: string
+        default: "testdev"
+      postgres-password:
+        description: "Postgres password for tests"
+        type: string
+        default: "testdev"
+      postgres-db:
+        description: "Postgres database name for tests"
+        type: string
+        default: "testdev"
+      run-e2e-tests:
+        description: "Run E2E test suite"
+        type: boolean
+        default: true
+      run-unit-tests:
+        description: "Run unit test suite"
+        type: boolean
+        default: true
+      typecheck-tests:
+        description: "Run TypeScript check on test files"
+        type: boolean
+        default: true
+      generate-swagger:
+        description: "Generate and commit Swagger/OpenAPI files"
+        type: boolean
+        default: false
+      swagger-files:
+        description: "Space-separated paths to commit for Swagger"
+        type: string
+        default: "libs/src/generated/swagger.json libs/src/generated/interfaces-api.d.ts"
+      lint-command:
+        description: "Lint command"
+        type: string
+        default: "yarn lint --fix"
+      build-command:
+        description: "Build command"
+        type: string
+        default: "yarn build"
+      test-command:
+        description: "E2E test command"
+        type: string
+        default: "yarn test:ci"
+      test-unit-command:
+        description: "Unit test command"
+        type: string
+        default: "yarn test:unit"
+    secrets:
+      SLACK_WEBHOOK:
+        required: false
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    env:
+      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      DATABASE_URL: "postgresql://${{ inputs.postgres-user }}:${{ inputs.postgres-password }}@localhost:5432/${{ inputs.postgres-db }}?schema=public"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ${{ inputs.postgres-user }}
+          POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+          POSTGRES_DB: ${{ inputs.postgres-db }}
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_INITDB_ARGS: "--data-checksums"
+        options: >-
+          --health-cmd "pg_isready -U ${{ inputs.postgres-user }}"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --mount type=tmpfs,destination=/var/lib/postgresql/data
+          --shm-size=256mb
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: yarn
+
+      - name: Cache node_modules
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ inputs.node-version }}-modules-${{ hashFiles('yarn.lock') }}
+          restore-keys: ${{ runner.os }}-node-${{ inputs.node-version }}-modules-
+
+      - name: Cache build outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            dist
+            node_modules/.prisma
+            node_modules/.cache
+          key: ${{ runner.os }}-build-${{ hashFiles('src/**/*', 'prisma/schema.prisma', 'tsconfig.json', 'yarn.lock') }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Cache Jest
+        uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/jest
+          key: ${{ runner.os }}-jest-${{ hashFiles('src/**/*.ts', 'test/**/*.ts') }}
+          restore-keys: ${{ runner.os }}-jest-
+
+      - run: yarn install --frozen-lockfile --prefer-offline
+
+      - run: ${{ inputs.build-command }}
+
+      - name: Lint and auto-fix
+        if: "!contains(github.event.head_commit.message || '', 'skip-linter')"
+        run: ${{ inputs.lint-command }}
+
+      - name: Commit lint fixes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "No linting changes to commit."
+          else
+            git commit -m "fix(): linter"
+            target="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+            [ -n "$target" ] && git push origin "HEAD:$target" || echo "::warning::No branch to push lint fix to."
+          fi
+
+      - name: Configure PostgreSQL for fast tests
+        run: |
+          PGPASSWORD=${{ inputs.postgres-password }} psql -h localhost -U ${{ inputs.postgres-user }} -d ${{ inputs.postgres-db }} -c "
+            ALTER SYSTEM SET fsync = 'off';
+            ALTER SYSTEM SET synchronous_commit = 'off';
+            ALTER SYSTEM SET full_page_writes = 'off';
+            ALTER SYSTEM SET checkpoint_timeout = '1h';
+            ALTER SYSTEM SET max_wal_size = '1GB';
+            ALTER SYSTEM SET wal_level = 'minimal';
+            ALTER SYSTEM SET max_wal_senders = 0;
+            ALTER SYSTEM SET random_page_cost = 1.0;
+            ALTER SYSTEM SET effective_cache_size = '1GB';
+            ALTER SYSTEM SET shared_buffers = '128MB';
+            ALTER SYSTEM SET work_mem = '64MB';
+            SELECT pg_reload_conf();
+          " || true
+
+      - name: Run Prisma migrations
+        if: "!contains(github.event.head_commit.message || '', 'skip-migrations')"
+        run: yarn prisma migrate deploy
+
+      - name: Verify Prisma migration status
+        if: "!contains(github.event.head_commit.message || '', 'skip-migrations')"
+        run: yarn prisma:migrate:status
+
+      - name: Verify Prisma schema matches migrations
+        if: "!contains(github.event.head_commit.message || '', 'skip-migrations')"
+        run: yarn prisma:migrate:diff
+
+      - name: Generate Swagger
+        if: inputs.generate-swagger
+        run: |
+          yarn swagger:generate
+          yarn openapi:generate 2>/dev/null || true
+
+      - name: Commit Swagger files
+        if: inputs.generate-swagger && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ inputs.swagger-files }}
+          if git diff --cached --quiet; then
+            echo "No swagger changes to commit."
+          else
+            git commit -m "docs(): swagger"
+            target="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+            [ -n "$target" ] && git push origin "HEAD:$target" || echo "::warning::No branch to push swagger to."
+          fi
+
+      - name: Run E2E Tests
+        if: inputs.run-e2e-tests && !contains(github.event.head_commit.message || '', 'skip-tests')
+        run: NODE_OPTIONS="--max-old-space-size=4096" ${{ inputs.test-command }}
+
+      - name: Run Unit Tests
+        if: inputs.run-unit-tests && !contains(github.event.head_commit.message || '', 'skip-tests')
+        run: ${{ inputs.test-unit-command }}
+
+      - name: Typecheck Tests
+        if: inputs.typecheck-tests
+        run: yarn typecheck:tests
+
+      - uses: soamee/github-actions/actions/slack-notify@main
+        if: always() && env.SLACK_WEBHOOK != ''
+        with:
+          status: ${{ job.status }}
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
