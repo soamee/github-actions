@@ -1,4 +1,4 @@
-name: "Version Bump"
+name: "Version Bump & Publish"
 
 on:
   workflow_call:
@@ -7,38 +7,56 @@ on:
         description: "Version bump type (patch, minor, major)"
         type: string
         required: true
-      base-branch:
-        description: "Branch to target the release PR against"
-        type: string
-        default: "main"
-      reviewers:
-        description: "Space-separated GitHub usernames to request review from"
-        type: string
-        default: "javiermanzano juangutierrezortega Bermejo3 AndreaAguado Daviddpc92"
       node-version:
         description: "Node.js version"
         type: string
         default: "22"
-      package-files:
-        description: "Space-separated files to stage after bump (e.g. 'package.json package-lock.json')"
+      package-manager:
+        description: "Package manager (npm or yarn)"
         type: string
-        default: "package.json"
+        default: "npm"
+      build-command:
+        description: "Build command"
+        type: string
+        default: "npm run build"
+      test-command:
+        description: "Test command (empty to skip)"
+        type: string
+        default: "npm test -- --runInBand"
+      publish-branch:
+        description: "Branch to commit the version bump to"
+        type: string
+        default: "main"
 
 jobs:
-  bump:
+  bump-and-publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.publish-branch }}
           fetch-depth: 0
           token: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
 
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          cache: ${{ inputs.package-manager }}
+
+      - name: Enable corepack
+        if: inputs.package-manager == 'yarn'
+        run: corepack enable
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          else
+            npm ci
+          fi
 
       - name: Configure git
         run: |
@@ -50,39 +68,41 @@ jobs:
         run: |
           NEW_VERSION=$(npm version ${{ inputs.version }} --no-git-tag-version)
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "## Version bump: $NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Create release branch and PR
+      - name: Build
+        run: ${{ inputs.build-command }}
+
+      - name: Test
+        if: inputs.test-command != ''
+        run: ${{ inputs.test-command }}
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit, tag, and push
         env:
           GH_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
-          REVIEWERS: ${{ inputs.reviewers }}
         run: |
           set -euo pipefail
+          VERSION="${{ steps.bump.outputs.version }}"
 
-          BRANCH="release/${{ steps.bump.outputs.version }}"
+          git add -A
+          git commit -m "chore(release): $VERSION"
+          git tag "$VERSION"
+          git push origin "${{ inputs.publish-branch }}" --tags
 
-          # Delete stale remote branch if it exists
-          git push origin --delete "$BRANCH" 2>/dev/null || true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+        run: |
+          gh release create "${{ steps.bump.outputs.version }}" \
+            --generate-notes \
+            --title "${{ steps.bump.outputs.version }}"
 
-          git checkout -b "$BRANCH"
-          git add ${{ inputs.package-files }}
-          git commit -m "chore(release): ${{ steps.bump.outputs.version }}"
-          git push origin "$BRANCH"
-
-          # Close any existing PR for this branch
-          old_url=$(gh pr list --base "${{ inputs.base-branch }}" --head "$BRANCH" --state open --json url --jq '.[0].url // ""')
-          if [ -n "$old_url" ]; then
-            gh pr close "$old_url" --delete-branch 2>/dev/null || true
-          fi
-
-          url=$(gh pr create \
-            --base "${{ inputs.base-branch }}" \
-            --head "$BRANCH" \
-            --title "chore(release): ${{ steps.bump.outputs.version }}" \
-            --body "Automated version bump to ${{ steps.bump.outputs.version }} (${{ inputs.version }})")
-
-          # Assign reviewers (gracefully skip failures)
-          for reviewer in $REVIEWERS; do
-            gh pr edit "$url" --add-reviewer "$reviewer" >/dev/null 2>&1 || true
-          done
-
-          echo "Release PR: $url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Summary
+        run: |
+          echo "Published ${{ steps.bump.outputs.version }} to npm" >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub Release: ${{ steps.bump.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
