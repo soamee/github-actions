@@ -34,9 +34,6 @@ on:
         description: "Run bundle size check per app"
         type: boolean
         default: false
-    secrets:
-      SLACK_WEBHOOK:
-        required: false
 
 jobs:
   setup:

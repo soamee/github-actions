@@ -15,9 +15,6 @@ on:
         description: "Space-separated list of GitHub usernames to request review from"
         type: string
         default: "javiermanzano juangutierrezortega Bermejo3 AndreaAguado Daviddpc92"
-    secrets:
-      DEPENDENCY_UPDATE_TOKEN:
-        required: false
 
 concurrency:
   group: update-soamee-packages

@@ -27,19 +27,6 @@ on:
         description: "Commit SHA to deploy (defaults to current)"
         type: string
         default: ""
-    secrets:
-      SSH_PRIVATE_KEY:
-        required: true
-      DATABASE_URL:
-        required: false
-      SLACK_WEBHOOK:
-        required: false
-      DOKKU_WEB_SSH:
-        required: false
-      DOKKU_DASHBOARD_SSH:
-        required: false
-      DOKKU_API_SSH:
-        required: false
 
 jobs:
   deploy:

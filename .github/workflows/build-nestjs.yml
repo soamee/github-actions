@@ -55,9 +55,6 @@ on:
         description: "Unit test command"
         type: string
         default: "yarn test:unit"
-    secrets:
-      SLACK_WEBHOOK:
-        required: false
 
 jobs:
   check-and-build:

@@ -23,9 +23,6 @@ on:
         description: "Space-separated files to stage after bump (e.g. 'package.json package-lock.json')"
         type: string
         default: "package.json"
-    secrets:
-      DEPENDENCY_UPDATE_TOKEN:
-        required: false
 
 jobs:
   bump:
