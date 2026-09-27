@@ -32,6 +32,8 @@ jobs:
       UPDATE_BRANCH: chore/update-soamee-packages
       REVIEWERS: ${{ inputs.reviewers }}
       HAS_UPDATE_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN != '' }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_REGISTRY: https://npm.pkg.github.com
 
     steps:
       - uses: actions/checkout@v7
@@ -103,8 +105,13 @@ jobs:
           }
 
           async function fetchLatestVersion(name) {
-            const response = await fetch(`${REGISTRY}/${encodeURIComponent(name)}`, {
-              headers: { accept: 'application/vnd.npm.install-v1+json' },
+            const response = await fetch(`${REGISTRY}/${name.replace('/', '%2f')}`, {
+              headers: {
+                accept: 'application/vnd.npm.install-v1+json',
+                ...(process.env.NPM_TOKEN && {
+                  authorization: `Bearer ${process.env.NPM_TOKEN}`,
+                }),
+              },
             });
             if (!response.ok) {
               throw new Error(

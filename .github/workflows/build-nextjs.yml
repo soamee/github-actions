@@ -38,6 +38,8 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -59,6 +61,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     outputs:
       lint-changed: ${{ steps.lint-check.outputs.changed }}
@@ -99,6 +103,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     steps:
       - uses: actions/checkout@v7
@@ -119,6 +125,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     strategy:
       matrix:
@@ -154,6 +162,8 @@ jobs:
 
   commit-lint-fixes:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: [lint, test, build]
     if: needs.lint.outputs.lint-changed == 'true'
     permissions:
@@ -197,7 +207,7 @@ jobs:
     needs: [lint, test, build]
     if: always()
     steps:
-      - uses: soamee/github-actions/actions/slack-notify@main
+      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
         if: always()
         with:
           status: ${{ job.status }}
