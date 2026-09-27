@@ -121,6 +121,8 @@ jobs:
           restore-keys: ${{ runner.os }}-jest-
 
       - run: yarn install --frozen-lockfile --prefer-offline
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - run: ${{ inputs.build-command }}
 

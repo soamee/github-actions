@@ -2,11 +2,27 @@
 
 Reusable workflows and composite actions shared across all Soamee repos.
 
+## Private registry
+
+`@soamee/*` packages are published privately to GitHub Packages. Every repo that
+installs them commits this `.npmrc`:
+
+```
+@soamee:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+```
+
+`NPM_TOKEN` is an organization secret holding a classic personal access token with
+`read:packages`. Every step that runs an install needs it in its environment, and so
+does any Docker build, which receives it as a BuildKit secret (`--secret id=npm_token,env=NPM_TOKEN`) so it never lands in an image layer. Publishing uses the workflow's own
+`GITHUB_TOKEN`. To install locally, export `NPM_TOKEN` with your own classic token
+(`read:packages`).
+
 ## Reusable Workflows
 
 ### Update Soamee Packages
 
-Checks npm for newer `@soamee/*` releases, updates package.json, and creates a PR.
+Checks GitHub Packages for newer `@soamee/*` releases, updates package.json, and creates a PR.
 
 ```yaml
 # .github/workflows/update-soamee-packages.yml
@@ -37,7 +53,7 @@ jobs:
 
 `promote.yml` merges the development branch into the release branch, and
 `version-bump.yml` bumps the version on that release branch, builds, tests,
-publishes to npm, tags and creates the GitHub Release. Chain both so a single
+publishes to GitHub Packages, tags and creates the GitHub Release. Chain both so a single
 manual run promotes `develop` to `main` and publishes.
 
 ```yaml
@@ -74,6 +90,9 @@ jobs:
   bump-and-publish:
     needs: promote
     if: ${{ always() && (needs.promote.result == 'success' || needs.promote.result == 'skipped') }}
+    permissions:
+      contents: write
+      packages: write
     uses: soamee/github-actions/.github/workflows/version-bump.yml@main
     with:
       version: ${{ inputs.version }}

@@ -51,6 +51,8 @@ jobs:
       - name: Install dependencies
         if: inputs.run-migrations
         run: yarn install --frozen-lockfile
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run database migrations
         if: inputs.run-migrations

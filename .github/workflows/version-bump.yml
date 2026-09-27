@@ -33,6 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,7 +46,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
+          scope: "@soamee"
           cache: ${{ inputs.package-manager }}
 
       - name: Enable corepack
@@ -51,6 +55,8 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ "${{ inputs.package-manager }}" = "yarn" ]; then
             yarn install --frozen-lockfile
@@ -77,10 +83,11 @@ jobs:
         if: inputs.test-command != ''
         run: ${{ inputs.test-command }}
 
-      - name: Publish to npm
-        run: npm publish --access public
+      - name: Publish to GitHub Packages
+        run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          NPM_TOKEN: ${{ github.token }}
 
       - name: Commit, tag, and push
         env:
@@ -104,5 +111,5 @@ jobs:
 
       - name: Summary
         run: |
-          echo "Published ${{ steps.bump.outputs.version }} to npm" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published ${{ steps.bump.outputs.version }} to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
           echo "GitHub Release: ${{ steps.bump.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
