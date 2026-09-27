@@ -37,12 +37,12 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       DEPLOY_SHA: ${{ inputs.commit-sha || github.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.DEPLOY_SHA }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         if: inputs.run-migrations
         with:
           node-version: ${{ inputs.node-version || '' }}
@@ -61,7 +61,7 @@ jobs:
 
       - name: Deploy to Dokku (API)
         if: contains(inputs.dokku-app-names, 'DOKKU_API_SSH') && secrets.DOKKU_API_SSH != ''
-        uses: dokku/github-action@master
+        uses: dokku/github-action@cc7dec1d2b9fed249a14ae462bc953bba436f78c # v1.10.0
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
           git_push_flags: "--force"
@@ -70,7 +70,7 @@ jobs:
 
       - name: Deploy to Dokku (Web)
         if: contains(inputs.dokku-app-names, 'DOKKU_WEB_SSH') && secrets.DOKKU_WEB_SSH != ''
-        uses: dokku/github-action@master
+        uses: dokku/github-action@cc7dec1d2b9fed249a14ae462bc953bba436f78c # v1.10.0
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
           git_push_flags: "--force"
@@ -79,14 +79,14 @@ jobs:
 
       - name: Deploy to Dokku (Dashboard)
         if: contains(inputs.dokku-app-names, 'DOKKU_DASHBOARD_SSH') && secrets.DOKKU_DASHBOARD_SSH != ''
-        uses: dokku/github-action@master
+        uses: dokku/github-action@cc7dec1d2b9fed249a14ae462bc953bba436f78c # v1.10.0
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
           git_push_flags: "--force"
           git_remote_url: ${{ secrets.DOKKU_DASHBOARD_SSH }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
+      - uses: soamee/github-actions/actions/slack-notify@main
         if: always() && env.SLACK_WEBHOOK != ''
         with:
           status: ${{ job.status }}

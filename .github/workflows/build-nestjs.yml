@@ -87,25 +87,25 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ github.head_ref || github.ref_name }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Cache node_modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: node_modules
           key: ${{ runner.os }}-node-${{ inputs.node-version }}-modules-${{ hashFiles('yarn.lock') }}
           restore-keys: ${{ runner.os }}-node-${{ inputs.node-version }}-modules-
 
       - name: Cache build outputs
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             dist
@@ -115,7 +115,7 @@ jobs:
           restore-keys: ${{ runner.os }}-build-
 
       - name: Cache Jest
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: node_modules/.cache/jest
           key: ${{ runner.os }}-jest-${{ hashFiles('src/**/*.ts', 'test/**/*.ts') }}
@@ -203,7 +203,7 @@ jobs:
         if: inputs.typecheck-tests
         run: yarn typecheck:tests
 
-      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
+      - uses: soamee/github-actions/actions/slack-notify@main
         if: always() && env.SLACK_WEBHOOK != ''
         with:
           status: ${{ job.status }}
