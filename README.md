@@ -13,9 +13,13 @@ installs them commits this `.npmrc`:
 ```
 
 `NPM_TOKEN` is an organization secret holding a classic personal access token with
-`read:packages`. Every step that runs an install needs it in its environment, and so
-does any Docker build, which receives it as a BuildKit secret (`--secret id=npm_token,env=NPM_TOKEN`) so it never lands in an image layer. Publishing uses the workflow's own
-`GITHUB_TOKEN`. To install locally, export `NPM_TOKEN` with your own classic token
+`read:packages`. Yarn 1 expands `${NPM_TOKEN}` whenever it loads config, so every
+step that runs `yarn` fails without it, including `actions/setup-node` with
+`cache: yarn`. Set it in the job's `env`, not per step, as the workflows here do.
+A Docker build in a caller's own CI receives it as a BuildKit secret
+(`--secret id=npm_token,env=NPM_TOKEN`) so it never lands in an image layer; a
+Dokku deploy builds on the server, so the token must be configured on the Dokku
+app. Publishing uses the workflow's own `GITHUB_TOKEN`. To install locally, export `NPM_TOKEN` with your own classic token
 (`read:packages`).
 
 ## Pinning
@@ -27,8 +31,8 @@ and keep `# main` as a trailing comment:
 uses: soamee/github-actions/.github/workflows/version-bump.yml@<sha> # main
 ```
 
-These workflows run with `secrets: inherit` and `packages: write`, so a floating
-`@main` gives whoever can push here the secrets of every caller. Moving to a newer
+Callers pass `secrets: inherit`, and `version-bump` also gets `packages: write`, so a
+floating `@main` gives whoever can push here the secrets of every caller. Moving to a newer
 version means bumping the SHA in each caller.
 
 ## Reusable Workflows
@@ -137,7 +141,8 @@ the release branch is protected) and fall back to `GITHUB_TOKEN`.
 
 ### setup-node-cache
 
-Node.js + Yarn install with node_modules caching.
+Node.js + Yarn install with node_modules caching. The job needs `NPM_TOKEN` in its
+`env` if the repo installs `@soamee/*` packages.
 
 ```yaml
 - uses: soamee/github-actions/actions/setup-node-cache@main

@@ -38,6 +38,8 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -56,11 +58,11 @@ jobs:
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: yarn install --frozen-lockfile --prefer-offline
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   lint:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     outputs:
       lint-changed: ${{ steps.lint-check.outputs.changed }}
@@ -82,8 +84,6 @@ jobs:
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
 
       - run: yarn install --frozen-lockfile --prefer-offline
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Lint with auto-fix
         run: ${{ inputs.lint-command }}
@@ -103,6 +103,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     steps:
       - uses: actions/checkout@v7
@@ -119,12 +121,12 @@ jobs:
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
 
       - run: yarn install --frozen-lockfile --prefer-offline
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: ${{ inputs.test-command }}
 
   build:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     strategy:
       matrix:
@@ -144,8 +146,6 @@ jobs:
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
 
       - run: yarn install --frozen-lockfile --prefer-offline
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Cache Next.js build
         uses: actions/cache@v6
@@ -162,6 +162,8 @@ jobs:
 
   commit-lint-fixes:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: [lint, test, build]
     if: needs.lint.outputs.lint-changed == 'true'
     permissions:
@@ -184,8 +186,6 @@ jobs:
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
 
       - run: yarn install --frozen-lockfile --prefer-offline
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: ${{ inputs.lint-command }}
 
       - name: Commit and push

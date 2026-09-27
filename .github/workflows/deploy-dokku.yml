@@ -34,6 +34,7 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       DEPLOY_SHA: ${{ inputs.commit-sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -51,8 +52,6 @@ jobs:
       - name: Install dependencies
         if: inputs.run-migrations
         run: yarn install --frozen-lockfile
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run database migrations
         if: inputs.run-migrations
