@@ -18,6 +18,19 @@ does any Docker build, which receives it as a BuildKit secret (`--secret id=npm_
 `GITHUB_TOKEN`. To install locally, export `NPM_TOKEN` with your own classic token
 (`read:packages`).
 
+## Pinning
+
+The examples below use `@main` for readability. In a repo, pin the full commit SHA
+and keep `# main` as a trailing comment:
+
+```yaml
+uses: soamee/github-actions/.github/workflows/version-bump.yml@<sha> # main
+```
+
+These workflows run with `secrets: inherit` and `packages: write`, so a floating
+`@main` gives whoever can push here the secrets of every caller. Moving to a newer
+version means bumping the SHA in each caller.
+
 ## Reusable Workflows
 
 ### Update Soamee Packages
