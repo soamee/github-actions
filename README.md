@@ -164,7 +164,8 @@ Single step replacing the 3-step success/cancel/fail pattern.
 
 ### lint-autofix
 
-Runs linter with --fix, commits and pushes changes.
+Runs linter with --fix, commits and pushes changes. Like `setup-node-cache`, the job
+needs `NPM_TOKEN` in its `env` if the repo installs `@soamee/*` packages.
 
 ```yaml
 - uses: soamee/github-actions/actions/lint-autofix@main
