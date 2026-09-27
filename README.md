@@ -24,16 +24,12 @@ app. Publishing uses the workflow's own `GITHUB_TOKEN`. To install locally, expo
 
 ## Pinning
 
-The examples below use `@main` for readability. In a repo, pin the full commit SHA
-and keep `# main` as a trailing comment:
+Callers use `@main`, so a change merged here reaches every repo at once. That is
+why `main` requires a reviewed PR.
 
-```yaml
-uses: soamee/github-actions/.github/workflows/version-bump.yml@<sha> # main
-```
-
-Callers pass `secrets: inherit`, and `version-bump` also gets `packages: write`, so a
-floating `@main` gives whoever can push here the secrets of every caller. Moving to a newer
-version means bumping the SHA in each caller.
+Third-party actions are pinned to a full commit SHA with the release as a trailing
+comment (`actions/checkout@<sha> # v7.0.1`), because they receive the callers'
+secrets. Dependabot (`.github/dependabot.yml`) opens the PRs that move those pins.
 
 ## Reusable Workflows
 

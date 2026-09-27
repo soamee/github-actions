@@ -41,16 +41,16 @@ jobs:
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Cache node_modules
         id: cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
@@ -67,18 +67,18 @@ jobs:
     outputs:
       lint-changed: ${{ steps.lint-check.outputs.changed }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Restore node_modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
@@ -107,15 +107,15 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs: setup
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Restore node_modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
@@ -132,15 +132,15 @@ jobs:
       matrix:
         app: ${{ fromJson(format('["{0}"]', join(fromJson(format('["{0}"]', inputs.apps)), '","'))) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Restore node_modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
@@ -148,7 +148,7 @@ jobs:
       - run: yarn install --frozen-lockfile --prefer-offline
 
       - name: Cache Next.js build
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/${{ matrix.app }}/.next/cache
           key: ${{ runner.os }}-nextjs-${{ matrix.app }}-${{ hashFiles(format('apps/{0}/**/*', matrix.app), 'shared/**/*') }}
@@ -169,18 +169,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ inputs.node-version }}
           cache: yarn
 
       - name: Restore node_modules
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.cache-paths }}
           key: ${{ runner.os }}-node-modules-${{ hashFiles('yarn.lock') }}
@@ -207,7 +207,7 @@ jobs:
     needs: [lint, test, build]
     if: always()
     steps:
-      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
+      - uses: soamee/github-actions/actions/slack-notify@main
         if: always()
         with:
           status: ${{ job.status }}
