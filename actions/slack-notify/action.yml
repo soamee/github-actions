@@ -3,7 +3,7 @@ description: "Sends a Slack notification for job success, cancellation, or failu
 
 inputs:
   status:
-    description: "Job status — pass ${{ job.status }} from the caller"
+    description: "Job status — pass job.status from the caller"
     required: true
   webhook-url:
     description: "Slack webhook URL"

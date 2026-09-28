@@ -207,7 +207,7 @@ jobs:
     needs: [lint, test, build]
     if: always()
     steps:
-      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
+      - uses: soamee/github-actions/actions/slack-notify@00e575252a4b1db131d635d7456df8108ebd1fad # main
         if: always()
         with:
           status: ${{ job.status }}

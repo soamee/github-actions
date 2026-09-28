@@ -89,7 +89,7 @@ jobs:
           git_remote_url: ${{ secrets.DOKKU_DASHBOARD_SSH }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - uses: soamee/github-actions/actions/slack-notify@2e5a3db14c0c95f35d2e21225e8d472e66625d97 # main
+      - uses: soamee/github-actions/actions/slack-notify@00e575252a4b1db131d635d7456df8108ebd1fad # main
         if: always() && env.SLACK_WEBHOOK != ''
         with:
           status: ${{ job.status }}
