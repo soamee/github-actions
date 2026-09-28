@@ -35,6 +35,9 @@ jobs:
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      HAS_DOKKU_API_SSH: ${{ secrets.DOKKU_API_SSH != '' }}
+      HAS_DOKKU_WEB_SSH: ${{ secrets.DOKKU_WEB_SSH != '' }}
+      HAS_DOKKU_DASHBOARD_SSH: ${{ secrets.DOKKU_DASHBOARD_SSH != '' }}
       DEPLOY_SHA: ${{ inputs.commit-sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -60,7 +63,7 @@ jobs:
         run: yarn prisma migrate deploy
 
       - name: Deploy to Dokku (API)
-        if: contains(inputs.dokku-app-names, 'DOKKU_API_SSH') && secrets.DOKKU_API_SSH != ''
+        if: contains(inputs.dokku-app-names, 'DOKKU_API_SSH') && env.HAS_DOKKU_API_SSH == 'true'
         uses: dokku/github-action@master
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
@@ -69,7 +72,7 @@ jobs:
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy to Dokku (Web)
-        if: contains(inputs.dokku-app-names, 'DOKKU_WEB_SSH') && secrets.DOKKU_WEB_SSH != ''
+        if: contains(inputs.dokku-app-names, 'DOKKU_WEB_SSH') && env.HAS_DOKKU_WEB_SSH == 'true'
         uses: dokku/github-action@master
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
@@ -78,7 +81,7 @@ jobs:
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy to Dokku (Dashboard)
-        if: contains(inputs.dokku-app-names, 'DOKKU_DASHBOARD_SSH') && secrets.DOKKU_DASHBOARD_SSH != ''
+        if: contains(inputs.dokku-app-names, 'DOKKU_DASHBOARD_SSH') && env.HAS_DOKKU_DASHBOARD_SSH == 'true'
         uses: dokku/github-action@master
         with:
           ci_commit: ${{ env.DEPLOY_SHA }}
