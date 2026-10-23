@@ -133,9 +133,17 @@ jobs:
 | `build-command` | `npm run build` | Build command |
 | `test-command` | `npm test -- --runInBand` | Empty to skip tests |
 | `publish-branch` | `main` | Branch the release commit and tag land on |
+| `slack-mention` | `<!channel>` | Mention prepended to the Slack release message, empty for none |
 
 Both workflows push with `DEPENDENCY_UPDATE_TOKEN` when available (needed when
 the release branch is protected) and fall back to `GITHUB_TOKEN`.
+
+After creating the GitHub Release, `version-bump.yml` posts it to Slack through the
+`SLACK_RELEASES_WEBHOOK` organization secret (an incoming webhook for the releases
+channel). The message lists the PRs from the generated release notes, grouped by their
+conventional-commit prefix (`feat!`/`BREAKING`, `feat`, `fix`, everything else), plus
+the install command and a link to the release. Without the secret the step is skipped,
+and a Slack failure never fails the release.
 
 ## Composite Actions
 
