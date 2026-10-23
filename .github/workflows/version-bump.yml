@@ -27,6 +27,10 @@ on:
         description: "Branch to commit the version bump to"
         type: string
         default: "main"
+      slack-mention:
+        description: "Mention prepended to the Slack release message (empty for none)"
+        type: string
+        default: "<!channel>"
 
 jobs:
   bump-and-publish:
@@ -108,6 +112,80 @@ jobs:
           gh release create "${{ steps.bump.outputs.version }}" \
             --generate-notes \
             --title "${{ steps.bump.outputs.version }}"
+
+      # The package is already published at this point, so a Slack failure
+      # must not mark the release as failed.
+      - name: Notify Slack
+        continue-on-error: true
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_RELEASES_WEBHOOK }}
+          GH_TOKEN: ${{ secrets.DEPENDENCY_UPDATE_TOKEN || github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          MENTION: ${{ inputs.slack-mention }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "SLACK_RELEASES_WEBHOOK not set, skipping Slack notification"
+            exit 0
+          fi
+
+          gh release view "$VERSION" --json body,url > "$RUNNER_TEMP/release.json"
+
+          node > "$RUNNER_TEMP/slack.json" <<'EOF'
+          const fs = require("fs");
+          const path = require("path");
+
+          const { body, url } = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, "release.json"), "utf8"));
+          const pkg = require(path.resolve("package.json")).name;
+          const version = process.env.VERSION.replace(/^v/, "");
+          const mention = process.env.MENTION ? `${process.env.MENTION} ` : "";
+          const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+          // Group the generated-notes PR lines by their conventional-commit prefix
+          const groups = { breaking: [], feat: [], fix: [], other: [] };
+          for (const line of body.split(/\r?\n/)) {
+            const pr = line.match(/^\* (.+) by @(\S+) in (https:\/\/\S+)$/);
+            if (!pr) continue;
+            const [, title, author, prUrl] = pr;
+            const item = `• <${prUrl}|${esc(title)}> (${esc(author)})`;
+            const type = title.match(/^(\w+)(\([^)]*\))?(!)?:/);
+            if (type?.[3] || /BREAKING/.test(title)) groups.breaking.push(item);
+            else if (type?.[1] === "feat") groups.feat.push(item);
+            else if (type?.[1] === "fix") groups.fix.push(item);
+            else groups.other.push(item);
+          }
+
+          const sections = [
+            ["Breaking changes", groups.breaking],
+            ["Nuevo", groups.feat],
+            ["Correcciones", groups.fix],
+            ["Otros cambios", groups.other],
+          ]
+            .filter(([, items]) => items.length)
+            .map(([label, items]) => ({
+              type: "section",
+              // Slack rejects section text over 3000 characters
+              text: { type: "mrkdwn", text: `*${label}*\n${items.join("\n")}`.slice(0, 3000) },
+            }));
+
+          if (!sections.length) {
+            sections.push({ type: "section", text: { type: "mrkdwn", text: "_Sin PRs en las notas de la release_" } });
+          }
+
+          console.log(JSON.stringify({
+            text: `${mention}${pkg} ${version} publicado`,
+            blocks: [
+              { type: "section", text: { type: "mrkdwn", text: `${mention}*${pkg} ${version}* publicado` } },
+              ...sections,
+              {
+                type: "context",
+                elements: [{ type: "mrkdwn", text: `\`npm i ${pkg}@${version}\` · <${url}|Ver release>` }],
+              },
+            ],
+          }));
+          EOF
+
+          curl -sSf -X POST -H "Content-type: application/json" --data @"$RUNNER_TEMP/slack.json" "$SLACK_WEBHOOK"
 
       - name: Summary
         run: |
