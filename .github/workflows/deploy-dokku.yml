@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ${{ fromJSON(vars.CI_RUNNER || '["ubuntu-latest"]') }}
+    runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
